@@ -8,12 +8,12 @@ import glob
 # from inference.devapi import get_llm_response # Removed this import
 from utils.io_utils import jload, jdump
 # from tasks.quality import QuALITY # Removed this import
-# from utils.io_utils import set_openai_key # Removed this import
+# from utils.io_utils import set_openrouter_key # Removed this import
 import random
-from openai import OpenAI # Added for OpenRouter API interaction
+from openrouter import openrouter # Added for OpenRouter API interaction
 import os # Added to access environment variables
 
-# Placeholder for API key, will be set by set_openai_key
+# Placeholder for API key, will be set by set_openrouter_key
 OPENROUTER_API_KEY = None
 
 SYSTEM_PROMPT_GENERATE_ENTITIES = """\
@@ -66,7 +66,7 @@ JSON_SCHEMA_FOR_ENTITIES = {
     }
 }
 
-def set_openai_key():
+def set_openrouter_key():
     """Sets the OpenRouter API key from the environment variable."""
     global OPENROUTER_API_KEY
     OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
@@ -82,9 +82,9 @@ def get_llm_response(prompt: str,
     Accepts an optional response_format dictionary for structured outputs.
     """
     if not OPENROUTER_API_KEY:
-        raise ValueError("OpenRouter API key not set. Call set_openai_key() first.")
+        raise ValueError("OpenRouter API key not set. Call set_openrouter_key() first.")
 
-    client = OpenAI(
+    client = openrouter(
         base_url="https://openrouter.ai/api/v1",
         api_key=OPENROUTER_API_KEY,
     )
@@ -110,7 +110,7 @@ def get_llm_response(prompt: str,
 
 def generate_entities(document_content: str,
                       system_message: str,
-                      openai_model: str):
+                      openrouter_model: str):
     prompt = f"""
     ### Document Content:
     {document_content}
@@ -121,7 +121,7 @@ def generate_entities(document_content: str,
         try:
             # json_format=True の代わりに、定義したスキーマを渡す
             completion = get_llm_response(prompt,
-                               openai_model,
+                               openrouter_model,
                                system_message,
                                response_format=JSON_SCHEMA_FOR_ENTITIES)
             response_data = json.loads(completion)
@@ -139,7 +139,7 @@ def generate_two_entity_relations(document_content: str,
                                   entity1: str,
                                   entity2: str,
                                   system_message: str,
-                                  openai_model: str):
+                                  openrouter_model: str):
     prompt = f"""
     ### Document Content:
     {document_content}
@@ -148,7 +148,7 @@ def generate_two_entity_relations(document_content: str,
     - {entity2}
     """
     completion = get_llm_response(prompt,
-                       openai_model,
+                       openrouter_model,
                        system_message)
     return completion
 
@@ -157,7 +157,7 @@ def generate_three_entity_relations(document_content: str,
                                     entity2: str,
                                     entity3: str,
                                     system_message: str,
-                                    openai_model: str):
+                                    openrouter_model: str):
     prompt = f"""
     ### Document Content:
     {document_content}
@@ -167,13 +167,13 @@ def generate_three_entity_relations(document_content: str,
     - {entity3}
     """
     completion = get_llm_response(prompt,
-                       openai_model,
+                       openrouter_model,
                        system_message)
     return completion
 
 def generate_synthetic_data_for_document(markdown_filepath: str, model_name: str):
     random.seed(42)
-    set_openai_key()
+    set_openrouter_key()
 
     try:
         with open(markdown_filepath, 'r', encoding='utf-8') as f:
