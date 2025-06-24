@@ -1,48 +1,49 @@
 #!/bin/bash
 
+# スクリプトが途中で失敗した場合に、即座に終了させるための設定
 set -euo pipefail
 
-# --- Variables ---
+# --- 変数 ---
 IMAGE_NAME="entigraph_image:latest"
 CONTAINER_NAME="entigraph_container"
-DOCKERFILE_PATH="." # Path to the directory containing your Dockerfile
+DOCKERFILE_PATH="." # Dockerfileが含まれるディレクトリへのパス
 
-# --- Cleanup: Stop and Remove Existing Container ---
-# We use `docker ps -q` to check if the container is running/exists.
-# `|| true` is used to prevent the script from exiting if the container doesn't exist.
-echo "Attempting to stop and remove Docker container: $CONTAINER_NAME..."
+# --- クリーンアップ：既存コンテナの停止と削除 ---
+# `docker ps -q` を使ってコンテナが実行中/存在するかを確認します。
+# `|| true` は、コンテナが存在しない場合にスクリプトが終了するのを防ぐために使用します。
+echo "Dockerコンテナの停止と削除を試みます: $CONTAINER_NAME..."
 docker stop $CONTAINER_NAME || true
 docker rm $CONTAINER_NAME || true
-echo "Container cleanup complete."
+echo "コンテナのクリーンアップが完了しました。"
 
-# --- Cleanup: Remove Existing Image ---
-# This ensures we build from a clean state.
-# `|| true` handles the case where the image does not exist.
-echo "Attempting to remove Docker image: $IMAGE_NAME..."
+# --- クリーンアップ：既存イメージの削除 ---
+# これにより、クリーンな状態からビルドすることが保証されます。
+# `|| true` は、イメージが存在しないケースを処理します。
+echo "Dockerイメージの削除を試みます: $IMAGE_NAME..."
 docker rmi $IMAGE_NAME || true
-echo "Image cleanup complete."
+echo "イメージのクリーンアップが完了しました。"
 
-# --- Build: Create New Image ---
-echo "Building Docker image: $IMAGE_NAME from Dockerfile in $DOCKERFILE_PATH..."
-# `--pull` ensures we have the latest base images for security and consistency.
+# --- ビルド：新規イメージの作成 ---
+echo "Dockerイメージをビルドします: $IMAGE_NAME (Dockerfileの場所: $DOCKERFILE_PATH)..."
+# `--pull` により、セキュリティと一貫性のために最新のベースイメージを使用することが保証されます。
 docker build --pull -t $IMAGE_NAME $DOCKERFILE_PATH
-# `set -e` will automatically handle the build failure, so the manual check is no longer strictly necessary,
-# but can be kept for a more explicit error message.
-echo "Docker image $IMAGE_NAME built successfully."
+# `set -e` がビルドの失敗を自動的に処理するため、手動でのチェックは厳密には不要ですが、
+# より明確なエラーメッセージのために残すこともできます。
+echo "Dockerイメージ $IMAGE_NAME のビルドが成功しました。"
 
-# --- Deploy: Run New Container ---
-echo "Deploying container: $CONTAINER_NAME from image: $IMAGE_NAME..."
-# Add any necessary port mappings or volume mounts here.
-# `--rm` automatically removes the container when it exits.
-# Example: docker run -d --rm -p 8080:80 --name $CONTAINER_NAME $IMAGE_NAME
+# --- デプロイ：新規コンテナの実行 ---
+echo "コンテナをデプロイします: $CONTAINER_NAME (イメージ: $IMAGE_NAME)..."
+# 必要なポートマッピングやボリュームマウントはここに追加してください。
+# `--rm` は、コンテナが終了したときに自動的にコンテナを削除します。
+# 例: docker run -d --rm -p 8080:80 --name $CONTAINER_NAME $IMAGE_NAME
 docker run -d --rm --name $CONTAINER_NAME $IMAGE_NAME
-echo "Container $CONTAINER_NAME deployed successfully."
+echo "コンテナ $CONTAINER_NAME のデプロイが成功しました。"
 
-# --- Verification ---
-echo "Waiting a few seconds before showing logs..."
+# --- 検証 ---
+echo "ログを表示する前に数秒待機します..."
 sleep 3
-echo "--- Initial logs for $CONTAINER_NAME ---"
+echo "--- $CONTAINER_NAME の初期ログ ---"
 docker logs --tail 30 $CONTAINER_NAME
 echo "--------------------------------------"
 
-echo "Redeployment of $CONTAINER_NAME complete."
+echo "$CONTAINER_NAME の再デプロイが完了しました。"
