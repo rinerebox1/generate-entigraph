@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  entigraph:
+    build: .
+    container_name: entigraph_processor
+    env_file:
+      - .env
+    volumes:
+      # Mount the local ./data directory to /app/data in the container
+      # This allows the script to read markdown files from your local ./data directory
+      # and write output JSON files back to your local ./data/dataset/raw/... directory
+      - ./data:/app/data
+      # If your script has other local file dependencies (e.g. utils), mount them as needed:
+      # - ./utils:/app/utils
+    # The default command is defined in the Dockerfile CMD.
+    # You can override it here if needed, for example, to process specific files:
+    # command: ["python", "entigraph.py", "data/file1.md", "data/another_file.md"]
+    # To run with the default command (process all files in data/):
+    command: ["python", "entigraph.py"]
+
+# It's good practice to define a network, though for a single-service
+# setup like this, it's not strictly necessary.
+networks:
+  default:
+    driver: bridge
