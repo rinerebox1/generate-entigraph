@@ -5,7 +5,7 @@ import json
 from tqdm import tqdm
 import glob
 
-# from inference.devapi import gptqa # Removed this import
+# from inference.devapi import get_llm_response # Removed this import
 from utils.io_utils import jload, jdump
 # from tasks.quality import QuALITY # Removed this import
 # from utils.io_utils import set_openai_key # Removed this import
@@ -73,7 +73,7 @@ def set_openai_key():
     if not OPENROUTER_API_KEY:
         print("Warning: OPENROUTER_API_KEY environment variable not set.")
 
-def gptqa(prompt: str,
+def get_llm_response(prompt: str,
           model: str,
           system_message: str,
           response_format: Optional[Dict[str, Any]] = None): # boolから辞書型に変更
@@ -120,7 +120,7 @@ def generate_entities(document_content: str,
     while not can_read_entities:
         try:
             # json_format=True の代わりに、定義したスキーマを渡す
-            completion = gptqa(prompt,
+            completion = get_llm_response(prompt,
                                openai_model,
                                system_message,
                                response_format=JSON_SCHEMA_FOR_ENTITIES)
@@ -147,7 +147,7 @@ def generate_two_entity_relations(document_content: str,
     - {entity1}
     - {entity2}
     """
-    completion = gptqa(prompt,
+    completion = get_llm_response(prompt,
                        openai_model,
                        system_message)
     return completion
@@ -166,7 +166,7 @@ def generate_three_entity_relations(document_content: str,
     - {entity2}
     - {entity3}
     """
-    completion = gptqa(prompt,
+    completion = get_llm_response(prompt,
                        openai_model,
                        system_message)
     return completion
