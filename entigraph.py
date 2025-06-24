@@ -10,8 +10,8 @@ from utils.io_utils import jload, jdump
 # from tasks.quality import QuALITY # Removed this import
 # from utils.io_utils import set_openrouter_key # Removed this import
 import random
-from openrouter import openrouter # Added for OpenRouter API interaction
-import os # Added to access environment variables
+from openai import OpenAI
+import os
 
 # Placeholder for API key, will be set by set_openrouter_key
 OPENROUTER_API_KEY = None
@@ -84,7 +84,7 @@ def get_llm_response(prompt: str,
     if not OPENROUTER_API_KEY:
         raise ValueError("OpenRouter API key not set. Call set_openrouter_key() first.")
 
-    client = openrouter(
+    client = OpenAI(
         base_url="https://openrouter.ai/api/v1",
         api_key=OPENROUTER_API_KEY,
     )
