@@ -53,3 +53,7 @@ python entigraph.py data/001_Installation.md
 - 0番目: エンティティ名のリスト ( list[str] )
 - 1番目: 文書の要約 ( str )
 - 2番目: 各エンティティペア/トリプレット間の関係性を説明する文字列 ( str )
+
+# Openrouter
+
+https://openrouter.ai/deepseek/deepseek-chat-v3-0324:free
