@@ -1,7 +1,8 @@
 services:
   entigraph:
     build: .
-    container_name: entigraph_processor
+    image: entigraph_image:latest
+    container_name: entigraph_container
     env_file:
       - .env
     volumes:
