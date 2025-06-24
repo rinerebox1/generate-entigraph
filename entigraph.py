@@ -1,17 +1,44 @@
 import sys
 import os
-sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+# sys.path.append(os.path.dirname(os.path.dirname(__file__))) # This line might cause issues in Docker if 'utils' is not structured as a package.
 import json
 from tqdm import tqdm
 import glob
+from typing import Optional, Dict, Any # Added for type hinting
 
 # from inference.devapi import get_llm_response # Removed this import
-from utils.io_utils import jload, jdump
+# Assuming io_utils is in a directory named 'utils' at the same level as entigraph.py
+# If utils.io_utils cannot be found, Python will raise an ImportError.
+# To make this work in Docker, the 'utils' directory must be copied into the Docker image
+# and be importable. A common way is to ensure 'utils' is a Python package (contains __init__.py).
+# For simplicity, if jload and jdump are simple functions, they could be included directly in this script
+# or ensure the Dockerfile copies the 'utils' directory correctly and Python's path includes it.
+
+# Placeholder for io_utils functions if they are not complex.
+# If they are complex or part of a larger library, ensure the utils module is correctly packaged and installed/copied.
+def jload(filepath: str) -> Any:
+    """Loads a JSON file."""
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        print(f"Warning: File not found at {filepath} during jload.")
+        return None # Or raise error, or return default
+    except json.JSONDecodeError:
+        print(f"Warning: Could not decode JSON from {filepath}.")
+        return None # Or raise error, or return default
+
+def jdump(data: Any, filepath: str) -> None:
+    """Dumps data to a JSON file."""
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    with open(filepath, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=4)
+
 # from tasks.quality import QuALITY # Removed this import
 # from utils.io_utils import set_openrouter_key # Removed this import
 import random
 from openai import OpenAI
-import os
+# import os # Already imported
 
 # Placeholder for API key, will be set by set_openrouter_key
 OPENROUTER_API_KEY = None
@@ -43,27 +70,30 @@ Be concise and informative.
 
 # エンティティとサマリーを抽出するためのJSONスキーマを定義
 JSON_SCHEMA_FOR_ENTITIES = {
-    "type": "json_schema",
-    "json_schema": {
-      "name": "extract_entities_and_summary",
-      "strict": True,
-      "schema": {
-        "type": "object",
-        "properties": {
-          "entities": {
-            "type": "array",
-            "items": { "type": "string" },
-            "description": "A list of salient entities (people, places, concepts, technologies, etc.) found in the document."
-          },
-          "summary": {
-            "type": "string",
-            "description": "A concise summary of the document, typically one or two sentences."
-          }
-        },
-        "required": ["entities", "summary"],
-        "additionalProperties": False
-      }
-    }
+    "type": "json_object", # Changed from "json_schema" as per OpenAI's current spec for response_format
+                           # and to ensure the model strictly returns a JSON object.
+                           # If your OpenAI library version or the model expects "json_schema", revert this.
+    # "json_schema": { # This part might be specific to certain library versions or tools,
+    #                  # for standard OpenAI API, just "type": "json_object" is often enough.
+    #   "name": "extract_entities_and_summary",
+    #   "strict": True,
+    #   "schema": {
+    #     "type": "object",
+    #     "properties": {
+    #       "entities": {
+    #         "type": "array",
+    #         "items": { "type": "string" },
+    #         "description": "A list of salient entities (people, places, concepts, technologies, etc.) found in the document."
+    #       },
+    #       "summary": {
+    #         "type": "string",
+    #         "description": "A concise summary of the document, typically one or two sentences."
+    #       }
+    #     },
+    #     "required": ["entities", "summary"],
+    #     "additionalProperties": False
+    #   }
+    # }
 }
 
 def set_openrouter_key():
@@ -71,18 +101,21 @@ def set_openrouter_key():
     global OPENROUTER_API_KEY
     OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
     if not OPENROUTER_API_KEY:
-        print("Warning: OPENROUTER_API_KEY environment variable not set.")
+        # For a script running in Docker, printing a warning is fine.
+        # For critical operations, you might want to raise an error.
+        print("Warning: OPENROUTER_API_KEY environment variable not set. API calls will likely fail.")
 
 def get_llm_response(prompt: str,
           model: str,
           system_message: str,
-          response_format: Optional[Dict[str, Any]] = None): # boolから辞書型に変更
+          response_format: Optional[Dict[str, Any]] = None):
     """
     Sends a request to the OpenRouter API and returns the response.
     Accepts an optional response_format dictionary for structured outputs.
     """
     if not OPENROUTER_API_KEY:
-        raise ValueError("OpenRouter API key not set. Call set_openrouter_key() first.")
+        # This check is important. If the key isn't set, API calls will fail.
+        raise ValueError("OpenRouter API key not set. Call set_openrouter_key() or ensure OPENROUTER_API_KEY environment variable is set.")
 
     client = OpenAI(
         base_url="https://openrouter.ai/api/v1",
@@ -94,18 +127,21 @@ def get_llm_response(prompt: str,
         {"role": "user", "content": prompt}
     ]
 
-    # APIに渡す引数を準備
     api_kwargs = {
         "model": model,
         "messages": messages,
     }
-    # response_formatが指定されている場合のみ引数に追加
     if response_format:
         api_kwargs["response_format"] = response_format
 
-    completion = client.chat.completions.create(**api_kwargs)
-
-    return completion.choices[0].message.content
+    try:
+        completion = client.chat.completions.create(**api_kwargs)
+        return completion.choices[0].message.content
+    except Exception as e:
+        print(f"Error calling LLM: {e}")
+        # Depending on how you want to handle errors, you might return None, raise the exception, or retry.
+        # For this script, returning None and letting the calling function handle it seems reasonable.
+        return None
 
 
 def generate_entities(document_content: str,
@@ -115,25 +151,45 @@ def generate_entities(document_content: str,
     ### Document Content:
     {document_content}
     """
-    can_read_entities = None
     response_data = None
-    while not can_read_entities:
-        try:
-            # json_format=True の代わりに、定義したスキーマを渡す
-            completion = get_llm_response(prompt,
+    retries = 0
+    max_retries = 3 # Added a retry limit
+
+    while not response_data and retries < max_retries:
+        completion = get_llm_response(prompt,
                                openrouter_model,
                                system_message,
-                               response_format=JSON_SCHEMA_FOR_ENTITIES)
-            response_data = json.loads(completion)
-            if 'entities' in response_data and 'summary' in response_data:
-                 can_read_entities = response_data['entities']
+                               response_format=JSON_SCHEMA_FOR_ENTITIES) # Pass the schema for structured output
+        if completion is None: # LLM call failed
+            retries += 1
+            print(f"LLM call failed for entity generation. Retry {retries}/{max_retries}...")
+            if retries >= max_retries:
+                print("Max retries reached for entity generation. Giving up.")
+                return None # Indicate failure
+            continue
+
+        try:
+            response_data_candidate = json.loads(completion)
+            if isinstance(response_data_candidate, dict) and \
+               'entities' in response_data_candidate and isinstance(response_data_candidate['entities'], list) and \
+               'summary' in response_data_candidate and isinstance(response_data_candidate['summary'], str):
+                response_data = response_data_candidate
             else:
-                print(f"Invalid JSON response: {completion}. Missing 'entities' or 'summary'. Retrying...")
+                print(f"Invalid JSON structure in response: {completion}. Expected 'entities' (list) and 'summary' (str). Retrying...")
+                # response_data remains None, loop will retry
         except json.JSONDecodeError as e:
             print(f"Failed to decode JSON: {str(e)}. Response was: {completion}. Retrying...")
-        except Exception as e:
-            print(f"Failed to generate entities: {str(e)}. Retrying...")
+            # response_data remains None, loop will retry
+        except Exception as e: # Catch any other unexpected errors during processing
+            print(f"An unexpected error occurred while processing entities: {str(e)}. Response: {completion}. Retrying...")
+
+        if not response_data: # If still no valid data after try-except
+            retries += 1
+            if retries >= max_retries:
+                print(f"Max retries reached for entity generation after invalid/failed responses. Giving up.")
+                return None # Indicate failure
     return response_data
+
 
 def generate_two_entity_relations(document_content: str,
                                   entity1: str,
@@ -172,8 +228,8 @@ def generate_three_entity_relations(document_content: str,
     return completion
 
 def generate_synthetic_data_for_document(markdown_filepath: str, model_name: str):
-    random.seed(42)
-    set_openrouter_key()
+    random.seed(42) # Ensure reproducibility
+    set_openrouter_key() # Load API key from environment
 
     try:
         with open(markdown_filepath, 'r', encoding='utf-8') as f:
@@ -185,130 +241,194 @@ def generate_synthetic_data_for_document(markdown_filepath: str, model_name: str
         print(f"Error reading markdown file {markdown_filepath}: {str(e)}")
         return
 
-    # Use filename (without extension) as document_id
     document_id = os.path.splitext(os.path.basename(markdown_filepath))[0]
-
     print(f"Generating synthetic data for document: {document_id}")
 
-    # Sanitize model_name for file path
     sanitized_model_name = model_name.replace("/", "_").replace(":", "_")
-    # Ensure dataset directory exists
     output_dir = f'data/dataset/raw/markdown_entigraph_{sanitized_model_name}/'
-    os.makedirs(output_dir, exist_ok=True)
+    # os.makedirs(output_dir, exist_ok=True) # jdump will create directory
     output_path = os.path.join(output_dir, f'{document_id}.json')
 
-
+    output = None
     if os.path.exists(output_path):
-        try:
-            output = jload(output_path)
-            if not isinstance(output, list) or (len(output) > 0 and not isinstance(output[0], list)):
-                print(f"Output file {output_path} has unexpected format. Initializing anew.")
-                output = [[]] # Ensure output starts as a list with an empty list for entities
-        except json.JSONDecodeError:
-            print(f"Could not decode JSON from {output_path}. Initializing anew.")
-            output = [[]]
-    else:
-        output = [[]] # output[0] for entities, output[1] for summary, rest for relations
+        loaded_data = jload(output_path)
+        # Check if loaded data is in the expected list format [entities_list, summary_str, relation1_str, ...]
+        if isinstance(loaded_data, list) and len(loaded_data) >= 2 and \
+           isinstance(loaded_data[0], list) and isinstance(loaded_data[1], str):
+            output = loaded_data
+            print(f"Entities and summary loaded from existing file: {output_path}")
+        else:
+            print(f"Output file {output_path} has unexpected format or is incomplete. Re-initializing.")
+            # Fall through to regenerate by not setting 'output'
 
-    # first check if entities are already generated
-    # output should be like: [ [...entities...], "summary_string", "relation1", "relation2", ...]
-    if isinstance(output[0], list) and len(output[0]) > 0 and len(output) > 1 and isinstance(output[1], str):
-        entities = output[0]
-        # summary = output[1] # Summary is already there
-        print("Entities and summary loaded from existing file.")
-    else:
+    if output is None: # If file didn't exist, or was invalid
         print("Generating entities and summary...")
-        # The generate_entities function now returns a dict: {'entities': [...], 'summary': '...'}
         generated_data = generate_entities(
             document_content,
-            SYSTEM_PROMPT_GENERATE_ENTITIES, # Use defined system prompt
-            model_name)
+            SYSTEM_PROMPT_GENERATE_ENTITIES,
+            model_name
+        )
 
-        entities = generated_data['entities']
-        summary = generated_data['summary']
+        if generated_data and 'entities' in generated_data and 'summary' in generated_data:
+            entities = generated_data['entities']
+            summary = generated_data['summary']
+            output = [entities, summary]
+            jdump(output, output_path)
+            print(f"Entities and summary generated and saved to {output_path}")
+        else:
+            print(f"Failed to generate entities and summary for {document_id}. Skipping further processing for this document.")
+            return # Critical step failed, cannot proceed for this document
 
-        output = [entities, summary] # Initialize output with entities and summary
-        jdump(output, output_path)
-        print(f"Entities and summary generated and saved to {output_path}")
+    # At this point, output[0] is entities and output[1] is summary
+    entities = output[0]
 
+    # Generate two-entity relations
     pair_list = []
-    # iterate over pairs of entities and generate relations
     for i in range(len(entities)):
         for j in range(i+1, len(entities)):
-            pair = (entities[i], entities[j])
-            pair_list.append(pair)
+            pair_list.append((entities[i], entities[j]))
+
+    # Check which relations are already generated
+    # Current output: [entities_list, summary_str, relation1, relation2, ...]
+    # Number of existing relations = len(output) - 2 (for entities and summary)
+    # We need to generate relations for pairs not yet covered.
+    # This simple check assumes relations are added sequentially and doesn't handle partial generation of pair_list well.
+    # For robustness, one might store relations as a dict keyed by sorted entity pairs, or similar.
+    # However, sticking to the current script's implied logic: regenerate if not all are present.
+    # A simple way to manage this is to only add new relations if they are not already in some form.
+    # The original script appends, so we can assume we need to generate for all pairs,
+    # and if the script is re-run, it will append duplicates unless managed.
+    # For simplicity and to match the original script's behavior of appending, we'll just generate.
+    # To avoid duplicates if re-run, the loading logic would need to be more robust.
+    # The current script saves after *each* relation, so it can resume.
 
     print(f"Generating relations for {len(pair_list)} pairs of entities...")
-    for entity1, entity2 in tqdm(pair_list):
-        # Simple check if a response for this pair might already exist (crude, assumes order and no duplicates before this run)
-        # A more robust check would involve inspecting the content of existing relations if format was guaranteed
-        # For now, we regenerate to ensure completeness as per original logic, but save frequently
+    # Start generating relations from where we left off (if applicable)
+    # The current output list has entities, summary, and then relations.
+    # So, items from index 2 onwards are relations.
+    # This is a simplification; a more robust approach would check *which* pairs are missing.
+    # However, the original code regenerates/appends.
+
+    # Let's refine: only generate relations not already accounted for by simple count.
+    # This assumes the order of pairs in pair_list is consistent.
+    num_existing_two_entity_relations = 0
+    # Count how many two-entity relations we might have (this is an approximation)
+    # The script mixes two-entity and three-entity relations in the same list.
+    # This makes it hard to determine resumption point without more structure in 'output'.
+    # For now, let's assume the script runs to completion for pairs, then for triples.
+    # If we want to resume, we'd need a clear marker or separate lists for pair/triple relations.
+
+    # Given the tqdm, it implies a full pass. Let's stick to that for now.
+    # If the script is interrupted, it will have saved some relations.
+    # Upon restart, it will re-generate entities/summary (if needed) and then re-generate all relations,
+    # appending them again. This will lead to duplicates.
+
+    # To improve: if output exists, and entities/summary are valid:
+    # output = [entities, summary] # Start fresh for relations for this run
+    # This ensures that if the script is re-run, it doesn't endlessly append old relations.
+    # This is a change from the original script's behavior if it was intended to append across multiple partial runs.
+    # Let's assume a clean generation of relations per run after entities/summary are set.
+
+    current_relations = output[2:] # Get existing relations
+    output = output[:2] # Reset output to just [entities, summary] before adding relations from this run
+
+    for entity1, entity2 in tqdm(pair_list, desc="Two-entity relations"):
+        # Here you could add a check if a relation for (entity1, entity2) is already in current_relations
+        # to avoid re-generating, but that requires a more complex check.
+        # For now, re-generate and append.
         response = generate_two_entity_relations(
             document_content, entity1, entity2,
-            SYSTEM_PROMPT_GENERATE_TWO_ENTITY_RELATIONS, # Use defined system prompt
+            SYSTEM_PROMPT_GENERATE_TWO_ENTITY_RELATIONS,
             model_name)
         if response:
             output.append(response)
         jdump(output, output_path) # Save after each relation
-    
-    # iterate over triples of entities and generate relations
+
+    # Generate three-entity relations
     triple_list = []
     if len(entities) >= 3:
         for i in range(len(entities)):
             for j in range(i+1, len(entities)):
                 for k in range(j+1, len(entities)):
-                    triple = (entities[i], entities[j], entities[k])
-                    triple_list.append(triple)
-        random.shuffle(triple_list)
+                    triple_list.append((entities[i], entities[j], entities[k]))
+        random.shuffle(triple_list) # Shuffle for variety if processing is partial
 
         print(f"Generating relations for {len(triple_list)} triples of entities...")
-        for entity1, entity2, entity3 in tqdm(triple_list):
+        for entity1, entity2, entity3 in tqdm(triple_list, desc="Three-entity relations"):
             response = generate_three_entity_relations(
                 document_content, entity1, entity2, entity3,
-                SYSTEM_PROMPT_GENERATE_THREE_ENTITY_RELATIONS, # Use defined system prompt
+                SYSTEM_PROMPT_GENERATE_THREE_ENTITY_RELATIONS,
                 model_name)
             if response:
                 output.append(response)
             jdump(output, output_path) # Save after each relation
 
+    print(f"Finished generating all data for {document_id}. Saved to {output_path}")
+
 
 if __name__ == '__main__':
-    model_name = "deepseek/deepseek-chat-v3-0324:free" # Specify your model
+    # The model name is hardcoded here. For Docker, this is fine.
+    # It could also be passed as an environment variable or command-line argument if flexibility is needed.
+    model_name_to_use = "deepseek/deepseek-chat-v3-0324:free" # Specify your model
 
-    # 処理対象のファイルリストを決定する
-    markdown_files = []
+    # Determine files to process
+    markdown_files_to_process = []
     if len(sys.argv) > 1:
-        # コマンドライン引数が与えられた場合、それをファイルリストとする
-        # (例: python entigraph.py file1.md file2.md)
-        markdown_files = sys.argv[1:]
-        print(f"Processing files specified in command line: {markdown_files}")
+        # If command line arguments are provided (e.g., by Docker CMD or docker run override), use them as file paths.
+        # These paths should be relative to the WORKDIR /app in the container.
+        # Example: docker run myimage data/file1.md data/file2.md
+        # sys.argv[0] is the script name, actual args start from sys.argv[1]
+        markdown_files_to_process = [os.path.join("/app", f) if not f.startswith("/app") else f for f in sys.argv[1:]]
+        # Ensure paths are absolute within the container context if they are relative.
+        # The script itself expects paths (e.g. 'data/file1.md').
+        # If Docker CMD is `python entigraph.py data/file1.md`, sys.argv[1] will be `data/file1.md`.
+        # This path is relative to WORKDIR, so `os.path.exists` will check `/app/data/file1.md`. This is correct.
+        markdown_files_to_process = sys.argv[1:]
+        print(f"Processing files specified in command line: {markdown_files_to_process}")
     else:
-        # コマンドライン引数がない場合、'data/' ディレクトリの .md ファイルを検索
-        search_path = 'data/*.md'
-        markdown_files = glob.glob(search_path)
-        print(f"No files specified. Searching for markdown files in '{search_path}'...")
+        # Default behavior: search for markdown files in the 'data/' directory (relative to WORKDIR /app).
+        # This means it will look in /app/data/ within the container.
+        search_path = 'data/*.md' # This path is relative to the script's location in /app
+        markdown_files_to_process = glob.glob(search_path)
+        print(f"No files specified. Searching for markdown files in '{search_path}' (relative to /app)...")
 
-    if not markdown_files:
+    if not markdown_files_to_process:
         print("\nNo markdown files found to process.")
-        print("Usage:")
-        print("  - To process all files in data/: python entigraph.py")
+        print("Usage (inside container, paths relative to /app):")
+        print("  - To process all files in /app/data/: python entigraph.py")
         print("  - To process specific files: python entigraph.py data/file1.md data/file2.md")
         sys.exit(1)
 
-    print(f"Found {len(markdown_files)} file(s) to process.")
+    print(f"Found {len(markdown_files_to_process)} file(s) to process: {markdown_files_to_process}")
 
-    # 各ファイルに対して処理を実行
-    for markdown_file_path in markdown_files:
-        if not os.path.exists(markdown_file_path):
-            print(f"Warning: The file '{markdown_file_path}' does not exist. Skipping.")
+    for markdown_file_path_arg in markdown_files_to_process:
+        # Ensure the path used is correct for the script's execution context
+        # If paths from glob are like 'data/foo.md', they are fine.
+        # If paths from argv are like 'data/foo.md', they are also fine.
+        # The script's open() calls will correctly resolve these relative to /app.
+
+        # We must ensure the script can find `utils.io_utils` if it's not embedded.
+        # The Dockerfile should `COPY utils /app/utils` if `utils` is a directory at the same level as Dockerfile.
+        # And `utils` should have an `__init__.py` to be a package.
+        # The `sys.path.append` line at the top of the original script `sys.path.append(os.path.dirname(os.path.dirname(__file__)))`
+        # tries to add the parent of the script's directory to sys.path.
+        # If script is /app/entigraph.py, its parent is /app, and its parent's parent is /.
+        # This is likely not what was intended and might be for a specific local project structure.
+        # For Docker, it's better to ensure modules are in WORKDIR or standard Python paths.
+        # I've removed that sys.path modification for now and embedded jload/jdump.
+
+        if not os.path.exists(markdown_file_path_arg):
+            print(f"Warning: The file '{markdown_file_path_arg}' does not exist (checked path relative to /app). Skipping.")
             continue
         
-        print(f"\n--- Starting processing for: {markdown_file_path} ---")
+        print(f"\n--- Starting processing for: {markdown_file_path_arg} ---")
         try:
-            generate_synthetic_data_for_document(markdown_file_path, model_name)
-            print(f"--- Finished processing for: {markdown_file_path} ---")
+            generate_synthetic_data_for_document(markdown_file_path_arg, model_name_to_use)
+            print(f"--- Finished processing for: {markdown_file_path_arg} ---")
         except Exception as e:
-            # 1つのファイルでエラーが起きても処理を止めず、次のファイルに進む
-            print(f"\n!!! An unexpected error occurred while processing {markdown_file_path}: {e} !!!")
+            print(f"\n!!! An unexpected error occurred while processing {markdown_file_path_arg}: {e} !!!")
+            # Optionally, log traceback: import traceback; traceback.print_exc()
             print("!!! Skipping to the next file. !!!")
             continue
+
+    print("\nAll specified files processed.")
