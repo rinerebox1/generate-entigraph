@@ -3,7 +3,7 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 import json
 from tqdm import tqdm
-import glob # Added to find markdown files
+import glob
 
 # from inference.devapi import gptqa # Removed this import
 from utils.io_utils import jload, jdump
@@ -246,30 +246,44 @@ def generate_synthetic_data_for_document(markdown_filepath: str, model_name: str
                 output.append(response)
             jdump(output, output_path) # Save after each relation
 
-if __name__ == '__main__':
-    # Example: python entigraph.py data/001_Installation.md
-    # To process all markdown files in data/ directory:
-    # for mdfile in data/*.md; do python entigraph.py "$mdfile"; done
 
+if __name__ == '__main__':
     model_name = "deepseek/deepseek-chat-v3-0324:free" # Specify your model
 
-    if len(sys.argv) < 2:
-        print("Usage: python entigraph.py <path_to_markdown_file>")
-        # Example: Process all .md files in the 'data/' directory
-        print("\nOr, to process all markdown files in 'data/' directory, you might run:")
-        print("for mdfile in data/*.md; do python entigraph.py \"$mdfile\"; done")
+    # 処理対象のファイルリストを決定する
+    markdown_files = []
+    if len(sys.argv) > 1:
+        # コマンドライン引数が与えられた場合、それをファイルリストとする
+        # (例: python entigraph.py file1.md file2.md)
+        markdown_files = sys.argv[1:]
+        print(f"Processing files specified in command line: {markdown_files}")
+    else:
+        # コマンドライン引数がない場合、'data/' ディレクトリの .md ファイルを検索
+        search_path = 'data/*.md'
+        markdown_files = glob.glob(search_path)
+        print(f"No files specified. Searching for markdown files in '{search_path}'...")
+
+    if not markdown_files:
+        print("\nNo markdown files found to process.")
+        print("Usage:")
+        print("  - To process all files in data/: python entigraph.py")
+        print("  - To process specific files: python entigraph.py data/file1.md data/file2.md")
         sys.exit(1)
 
-    markdown_file_path = sys.argv[1]
+    print(f"Found {len(markdown_files)} file(s) to process.")
 
-    if not markdown_file_path.startswith('data/') or not markdown_file_path.endswith('.md'):
-        print(f"Warning: Provided path '{markdown_file_path}' does not seem to be a direct markdown file in the 'data/' directory.")
-        # For robustness, allow processing if it's a valid file path
-
-    if not os.path.exists(markdown_file_path):
-        print(f"Error: The file '{markdown_file_path}' does not exist.")
-        sys.exit(1)
-
-    print(f"Starting processing for: {markdown_file_path}")
-    generate_synthetic_data_for_document(markdown_file_path, model_name)
-    print(f"Finished processing for: {markdown_file_path}")
+    # 各ファイルに対して処理を実行
+    for markdown_file_path in markdown_files:
+        if not os.path.exists(markdown_file_path):
+            print(f"Warning: The file '{markdown_file_path}' does not exist. Skipping.")
+            continue
+        
+        print(f"\n--- Starting processing for: {markdown_file_path} ---")
+        try:
+            generate_synthetic_data_for_document(markdown_file_path, model_name)
+            print(f"--- Finished processing for: {markdown_file_path} ---")
+        except Exception as e:
+            # 1つのファイルでエラーが起きても処理を止めず、次のファイルに進む
+            print(f"\n!!! An unexpected error occurred while processing {markdown_file_path}: {e} !!!")
+            print("!!! Skipping to the next file. !!!")
+            continue
