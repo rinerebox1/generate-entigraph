@@ -4,12 +4,72 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 import json
 from tqdm import tqdm
 
-from inference.devapi import gptqa
+# from inference.devapi import gptqa # Removed this import
 from utils.io_utils import jload, jdump
 from tasks.quality import QuALITY
-from utils.io_utils import set_openai_key
+# from utils.io_utils import set_openai_key # Removed this import
 import random
+from openai import OpenAI # Added for OpenRouter API interaction
+import os # Added to access environment variables
 
+# Placeholder for API key, will be set by set_openai_key
+OPENROUTER_API_KEY = None
+
+def set_openai_key():
+    """Sets the OpenRouter API key from the environment variable."""
+    global OPENROUTER_API_KEY
+    OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
+    if not OPENROUTER_API_KEY:
+        print("Warning: OPENROUTER_API_KEY environment variable not set.")
+
+def gptqa(prompt: str,
+          model: str,
+          system_message: str,
+          json_format: bool = False):
+    """
+    Sends a request to the OpenRouter API and returns the response.
+    """
+    if not OPENROUTER_API_KEY:
+        raise ValueError("OpenRouter API key not set. Call set_openai_key() first.")
+
+    client = OpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=OPENROUTER_API_KEY,
+    )
+
+    messages = [
+        {"role": "system", "content": system_message},
+        {"role": "user", "content": prompt}
+    ]
+
+    if json_format:
+        response_format_config = {
+            "type": "json_object",
+            # "json_schema": {  # Keeping it simple for now, can be expanded if needed
+            #     "name": "extract_entities_and_summary",
+            #     "strict": True,
+            #     "schema": {
+            #         "type": "object",
+            #         "properties": {
+            #             "entities": {"type": "array", "items": {"type": "string"}},
+            #             "summary": {"type": "string"}
+            #         },
+            #         "required": ["entities", "summary"]
+            #     }
+            # }
+        }
+        completion = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            response_format=response_format_config
+        )
+    else:
+        completion = client.chat.completions.create(
+            model=model,
+            messages=messages
+        )
+
+    return completion.choices[0].message.content
 
 def generate_entities(document_content: str,
                       system_message: str,
@@ -73,7 +133,9 @@ def generate_synthetic_data_for_document(document_index: str, model_name: str,):
     task = QuALITY('all')
     document = task.documents[document_index]
     print(f"Generating synthetic data for article {document.uid}")
-    output_path = f'data/dataset/raw/quality_entigraph_{model_name}/{document.uid}.json'
+    # Sanitize model_name for file path
+    sanitized_model_name = model_name.replace("/", "_").replace(":", "_")
+    output_path = f'data/dataset/raw/quality_entigraph_{sanitized_model_name}/{document.uid}.json'
 
 
     if os.path.exists(output_path):
@@ -130,6 +192,6 @@ def generate_synthetic_data_for_document(document_index: str, model_name: str,):
 
 if __name__ == '__main__':
     # seq 0 264 | xargs -P 265 -I {} sh -c 'python data/entigraph.py {} > data/dataset/log/log_gpt4turbo_{}.txt 2>&1'
-    model_name = "gpt-4-turbo"
+    model_name = "deepseek/deepseek-chat-v3-0324:free"
     document_index = int(sys.argv[1])
     generate_synthetic_data_for_document(document_index, model_name)
