@@ -55,5 +55,6 @@ python entigraph.py data/001_Installation.md
 - 2番目: 各エンティティペア/トリプレット間の関係性を説明する文字列 ( str )
 
 # Openrouter
+## DeepSeek: DeepSeek V3 0324 (free)
 
 https://openrouter.ai/deepseek/deepseek-chat-v3-0324:free
