@@ -1,4 +1,4 @@
-# 説明
+# 概要
 
 このスクリプトは、データセットに含まれる文書（ドキュメント）から、構造化されたデータ（エンティティとそれらの関係）を自動的に生成することを目的としています。具体的には、Openrouter の DeepSeek V3 0324 (free) モデルを利用して、非構造化テキストから以下のような情報を抽出・生成し、JSONファイルとして保存します。
 
@@ -8,6 +8,32 @@
 4. 3エンティティ間の関係: 抽出されたエンティティの3つの組み合わせ（トリプレット）間の関係性。
 
 このようにして生成されたデータは、ナレッジグラフの構築、関係抽出モデルの訓練データ、あるいは高度な質疑応答システムのデータソースなど、様々な用途に利用できます。
+
+# 実行方法
+
+コマンドライン引数を何も指定せずに実行します。
+```bash
+python entigraph.py
+```
+
+実行すると、以下のようなメッセージが表示され、自動で見つかったファイルが順次処理されます。
+
+No files specified. Searching for markdown files in 'data/*.md'...
+Found 3 file(s) to process.
+
+--- Starting processing for: data/001_Installation.md ---
+(処理ログ...)
+--- Finished processing for: data/001_Installation.md ---
+
+--- Starting processing for: data/002_Configuration.md ---
+(処理ログ...)
+--- Finished processing for: data/002_Configuration.md ---
+
+
+特定のファイルのみを処理する場合は、引数としてファイルパスを指定します。
+```bash
+python entigraph.py data/001_Installation.md
+```
 
 # 生成されるデータセット
 
