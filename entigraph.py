@@ -16,7 +16,6 @@ import os # Added to access environment variables
 # Placeholder for API key, will be set by set_openai_key
 OPENROUTER_API_KEY = None
 
-# Define system prompts directly in the script
 SYSTEM_PROMPT_GENERATE_ENTITIES = """\
 You are an expert in extracting key entities and summarizing technical documents.
 From the provided document content, please extract a list of salient entities (people, places, concepts, technologies, etc.) and provide a concise summary of the document.
@@ -42,6 +41,31 @@ If no clear relationship involving all three is described, state that.
 Be concise and informative.
 """
 
+# エンティティとサマリーを抽出するためのJSONスキーマを定義
+JSON_SCHEMA_FOR_ENTITIES = {
+    "type": "json_schema",
+    "json_schema": {
+      "name": "extract_entities_and_summary",
+      "strict": True,
+      "schema": {
+        "type": "object",
+        "properties": {
+          "entities": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "A list of salient entities (people, places, concepts, technologies, etc.) found in the document."
+          },
+          "summary": {
+            "type": "string",
+            "description": "A concise summary of the document, typically one or two sentences."
+          }
+        },
+        "required": ["entities", "summary"],
+        "additionalProperties": False
+      }
+    }
+}
+
 def set_openai_key():
     """Sets the OpenRouter API key from the environment variable."""
     global OPENROUTER_API_KEY
@@ -52,9 +76,10 @@ def set_openai_key():
 def gptqa(prompt: str,
           model: str,
           system_message: str,
-          json_format: bool = False):
+          response_format: Optional[Dict[str, Any]] = None): # boolから辞書型に変更
     """
     Sends a request to the OpenRouter API and returns the response.
+    Accepts an optional response_format dictionary for structured outputs.
     """
     if not OPENROUTER_API_KEY:
         raise ValueError("OpenRouter API key not set. Call set_openai_key() first.")
@@ -69,20 +94,19 @@ def gptqa(prompt: str,
         {"role": "user", "content": prompt}
     ]
 
-    if json_format:
-        response_format_config = {"type": "json_object"}
-        completion = client.chat.completions.create(
-            model=model,
-            messages=messages,
-            response_format=response_format_config
-        )
-    else:
-        completion = client.chat.completions.create(
-            model=model,
-            messages=messages
-        )
+    # APIに渡す引数を準備
+    api_kwargs = {
+        "model": model,
+        "messages": messages,
+    }
+    # response_formatが指定されている場合のみ引数に追加
+    if response_format:
+        api_kwargs["response_format"] = response_format
+
+    completion = client.chat.completions.create(**api_kwargs)
 
     return completion.choices[0].message.content
+
 
 def generate_entities(document_content: str,
                       system_message: str,
@@ -92,23 +116,24 @@ def generate_entities(document_content: str,
     {document_content}
     """
     can_read_entities = None
-    response_data = None # Initialize response_data
+    response_data = None
     while not can_read_entities:
         try:
+            # json_format=True の代わりに、定義したスキーマを渡す
             completion = gptqa(prompt,
                                openai_model,
                                system_message,
-                               json_format=True)
-            response_data = json.loads(completion) # Store parsed JSON
+                               response_format=JSON_SCHEMA_FOR_ENTITIES)
+            response_data = json.loads(completion)
             if 'entities' in response_data and 'summary' in response_data:
-                 can_read_entities = response_data['entities'] # Check if entities key exists and is not None
+                 can_read_entities = response_data['entities']
             else:
                 print(f"Invalid JSON response: {completion}. Missing 'entities' or 'summary'. Retrying...")
         except json.JSONDecodeError as e:
             print(f"Failed to decode JSON: {str(e)}. Response was: {completion}. Retrying...")
         except Exception as e:
             print(f"Failed to generate entities: {str(e)}. Retrying...")
-    return response_data # Return the full parsed JSON object
+    return response_data
 
 def generate_two_entity_relations(document_content: str,
                                   entity1: str,
