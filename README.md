@@ -11,25 +11,25 @@
 
 # 実行方法
 
-コマンドライン引数を何も指定せずに実行します。
+data ディレクトリにマークダウンファイルを配置して、コマンドライン引数を何も指定せずに実行します。
 ```bash
 python entigraph.py
 ```
 
-実行すると、以下のようなメッセージが表示され、自動で見つかったファイルが順次処理されます。
-
-No files specified. Searching for markdown files in 'data/*.md'...
-Found 3 file(s) to process.
-
---- Starting processing for: data/001_Installation.md ---
-(処理ログ...)
---- Finished processing for: data/001_Installation.md ---
-
---- Starting processing for: data/002_Configuration.md ---
-(処理ログ...)
---- Finished processing for: data/002_Configuration.md ---
-
-
+実行すると、以下のようなメッセージが表示され、自動で見つかったファイルが順次処理されます。<br>
+<br>
+No files specified. Searching for markdown files in 'data/*.md'...<br>
+Found 3 file(s) to process.<br>
+<br>
+--- Starting processing for: data/001_Installation.md ---<br>
+(処理ログ...)<br>
+--- Finished processing for: data/001_Installation.md ---<br>
+<br>
+--- Starting processing for: data/002_Configuration.md ---<br>
+(処理ログ...)<br>
+--- Finished processing for: data/002_Configuration.md ---<br>
+<br>
+<br>
 特定のファイルのみを処理する場合は、引数としてファイルパスを指定します。
 ```bash
 python entigraph.py data/001_Installation.md
